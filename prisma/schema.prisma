@@ -1,0 +1,300 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Modèle utilisateur pour l'authentification admin
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Types d'appareils (Téléphone, Ordinateur, Tablette, Console)
+model DeviceType {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  icon      String?
+  order     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  brands    Brand[]
+}
+
+// Marques (Apple, Samsung, HP, etc.)
+model Brand {
+  id           String     @id @default(cuid())
+  name         String
+  slug         String
+  logo         String?
+  deviceTypeId String
+  deviceType   DeviceType @relation(fields: [deviceTypeId], references: [id], onDelete: Cascade)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  models       Model[]
+
+  @@unique([deviceTypeId, name])
+}
+
+// Modèles d'appareils (iPhone 12, Galaxy S21, etc.)
+model Model {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String
+  image       String?
+  brandId     String
+  brand       Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  year        Int?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  repairs     Repair[]
+  faults      Fault[]
+
+  @@unique([brandId, name])
+}
+
+// Types de pannes (Écran cassé, Batterie, etc.)
+model FaultType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  icon        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  faults      Fault[]
+}
+
+// Pannes spécifiques par modèle avec prix
+model Fault {
+  id          String    @id @default(cuid())
+  modelId     String
+  model       Model     @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  faultTypeId String
+  faultType   FaultType @relation(fields: [faultTypeId], references: [id], onDelete: Cascade)
+  price       Float
+  duration    Int       // Durée en minutes
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  repairs     Repair[]
+
+  @@unique([modelId, faultTypeId])
+}
+
+// Clients
+model Customer {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String   @unique
+  phone     String
+  address   String?
+  city      String?
+  postalCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  repairs   Repair[]
+  invoices  Invoice[]
+}
+
+// Réparations
+model Repair {
+  id              String        @id @default(cuid())
+  repairNumber    String        @unique
+  customerId      String
+  customer        Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  modelId         String
+  model           Model         @relation(fields: [modelId], references: [id])
+  faultId         String
+  fault           Fault         @relation(fields: [faultId], references: [id])
+  serviceType     ServiceType   // Sur place ou Envoi postal
+  status          RepairStatus  @default(PENDING)
+  imei            String?
+  description     String?
+  diagnosticNotes String?
+  price           Float
+  depositPaid     Float         @default(0)
+  receivedDate    DateTime      @default(now())
+  estimatedDate   DateTime?
+  completedDate   DateTime?
+  deliveredDate   DateTime?
+  warrantyExpiry  DateTime?
+  trackingNumber  String?       // Pour envois postaux
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  statusHistory   RepairStatusHistory[]
+  parts           RepairPart[]
+  invoice         Invoice?
+}
+
+// Historique des statuts de réparation
+model RepairStatusHistory {
+  id        String       @id @default(cuid())
+  repairId  String
+  repair    Repair       @relation(fields: [repairId], references: [id], onDelete: Cascade)
+  status    RepairStatus
+  notes     String?
+  createdAt DateTime     @default(now())
+  createdBy String?
+}
+
+// Pièces détachées
+model Part {
+  id              String       @id @default(cuid())
+  name            String
+  reference       String       @unique
+  description     String?
+  purchasePrice   Float
+  sellingPrice    Float
+  stock           Int          @default(0)
+  minStock        Int          @default(5)
+  supplierName    String?
+  supplierRef     String?
+  active          Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  repairs         RepairPart[]
+  supplierOrders  SupplierOrderItem[]
+}
+
+// Relation entre réparation et pièces utilisées
+model RepairPart {
+  id        String   @id @default(cuid())
+  repairId  String
+  repair    Repair   @relation(fields: [repairId], references: [id], onDelete: Cascade)
+  partId    String
+  part      Part     @relation(fields: [partId], references: [id])
+  quantity  Int      @default(1)
+  price     Float
+  createdAt DateTime @default(now())
+
+  @@unique([repairId, partId])
+}
+
+// Fournisseurs
+model Supplier {
+  id        String          @id @default(cuid())
+  name      String          @unique
+  email     String?
+  phone     String?
+  address   String?
+  city      String?
+  postalCode String?
+  website   String?
+  notes     String?
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  orders    SupplierOrder[]
+}
+
+// Commandes fournisseurs
+model SupplierOrder {
+  id             String              @id @default(cuid())
+  orderNumber    String              @unique
+  supplierId     String
+  supplier       Supplier            @relation(fields: [supplierId], references: [id])
+  orderDate      DateTime            @default(now())
+  expectedDate   DateTime?
+  receivedDate   DateTime?
+  status         SupplierOrderStatus @default(PENDING)
+  totalAmount    Float
+  notes          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  items          SupplierOrderItem[]
+}
+
+// Articles de commande fournisseur
+model SupplierOrderItem {
+  id              String        @id @default(cuid())
+  orderId         String
+  order           SupplierOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId          String
+  part            Part          @relation(fields: [partId], references: [id])
+  quantity        Int
+  unitPrice       Float
+  receivedQuantity Int          @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([orderId, partId])
+}
+
+// Factures
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  customerId    String
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  repairId      String?       @unique
+  repair        Repair?       @relation(fields: [repairId], references: [id])
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime?
+  totalAmount   Float
+  paidAmount    Float         @default(0)
+  status        InvoiceStatus @default(UNPAID)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+// Pages de contenu (FAQ, etc.)
+model Page {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  content   String
+  metaTitle String?
+  metaDescription String?
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Enums
+enum ServiceType {
+  ON_SITE    // Sur place
+  MAIL_IN    // Envoi postal
+}
+
+enum RepairStatus {
+  PENDING           // En attente
+  DIAGNOSED         // Diagnostiqué
+  WAITING_PARTS     // En attente de pièces
+  IN_PROGRESS       // En réparation
+  COMPLETED         // Terminé
+  READY_FOR_PICKUP  // Prêt pour retrait
+  DELIVERED         // Livré
+  CANCELLED         // Annulé
+}
+
+enum SupplierOrderStatus {
+  PENDING   // En attente
+  ORDERED   // Commandé
+  PARTIAL   // Partiellement reçu
+  RECEIVED  // Reçu
+  CANCELLED // Annulé
+}
+
+enum InvoiceStatus {
+  UNPAID    // Non payée
+  PARTIAL   // Partiellement payée
+  PAID      // Payée
+  CANCELLED // Annulée
+}
